@@ -57,7 +57,8 @@ export function formFromMortgage(m: Mortgage): WizardForm {
 
 export type MortgageDraft = Omit<Mortgage, 'id' | 'createdAt' | 'updatedAt' | 'balanceAsOf'>;
 
-const num = (s: string): number | null => {
+/** Lenient numeric field parser — strips £, %, commas and spaces. */
+export const num = (s: string): number | null => {
   const cleaned = s.replace(/[£,%\s,]/g, '');
   if (cleaned === '') return null;
   const v = Number(cleaned);

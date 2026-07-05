@@ -29,6 +29,17 @@ No accounts, no sign-up, no ads. Everything stays on the device
   entered). Everything is labelled as a BoE average with its month — averages
   of advertised rates, never a quote or a recommendation — and data more than
   2 months old is flagged stale.
+- **Overpayment tools** — one screen per mortgage, all pure maths: (1)
+  instant impact — enter a one-off and/or monthly overpayment and see "saves
+  £X interest, cuts Y months" from a month-by-month amortisation diff; (2)
+  allowance tracker — configurable annual limit (default 10% of the balance
+  at the start of the allowance year, resetting on the deal anniversary or
+  1 January), logged overpayments count against it, "£X of £Y used — £Z
+  left, resets DD MMM", and a warning before logging anything that would
+  breach it; (3) overpay vs save — guaranteed return at the mortgage rate
+  against a user-entered savings rate after tax (basic/higher/ISA). Logged
+  overpayments persist and reduce the dashboard balance projection
+  (compounded at the mortgage rate from the date they were made).
 
 ## Engine
 

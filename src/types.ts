@@ -1,5 +1,13 @@
 export type RepaymentType = 'repayment' | 'interest-only';
 
+/** A logged one-off overpayment. */
+export interface Overpayment {
+  id: string;
+  /** ISO yyyy-mm-dd the payment was made. */
+  date: string;
+  amount: number;
+}
+
 export interface Mortgage {
   id: string;
   lender: string;
@@ -25,6 +33,13 @@ export interface Mortgage {
   /** Optional: the lender's SVR/revert rate, percent. Used for the SVR-drift
    * warning instead of the BoE average revert-to-rate when entered. */
   lenderSvrPct?: number;
+  /** Logged overpayments — adjust the balance projection and count against
+   * the annual allowance. */
+  overpayments?: Overpayment[];
+  /** Annual overpayment allowance, percent of balance (default 10). */
+  allowancePct?: number;
+  /** When the allowance year resets: deal anniversary (default) or 1 Jan. */
+  allowanceReset?: 'anniversary' | 'calendar';
   createdAt: string;
   updatedAt: string;
 }

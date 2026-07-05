@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import DashboardScreen from './src/screens/DashboardScreen';
+import OverpayScreen from './src/screens/OverpayScreen';
 import WizardScreen from './src/screens/WizardScreen';
 import { fetchMarket } from './src/api';
 import { todayIso } from './src/format';
@@ -11,7 +12,10 @@ import { colors } from './src/theme';
 import { Mortgage } from './src/types';
 import { MortgageDraft } from './src/wizard';
 
-type View = { name: 'dashboard' } | { name: 'wizard'; editing: Mortgage | null };
+type View =
+  | { name: 'dashboard' }
+  | { name: 'wizard'; editing: Mortgage | null }
+  | { name: 'overpay'; mortgageId: string };
 
 export default function App() {
   const [mortgages, setMortgages] = useState<Mortgage[]>([]);
@@ -43,6 +47,12 @@ export default function App() {
     setMortgages(await deleteMortgage(m.id));
   };
 
+  // Overpay screen edits (logged overpayments, allowance config) — persist
+  // without re-baselining balanceAsOf, unlike the wizard.
+  const handleUpdate = async (m: Mortgage) => {
+    setMortgages(await saveMortgage({ ...m, updatedAt: new Date().toISOString() }));
+  };
+
   return (
     <SafeAreaProvider>
       <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
@@ -54,9 +64,25 @@ export default function App() {
             market={market}
             onAdd={() => setView({ name: 'wizard', editing: null })}
             onEdit={(m) => setView({ name: 'wizard', editing: m })}
+            onOverpay={(m) => setView({ name: 'overpay', mortgageId: m.id })}
             onDelete={handleDelete}
           />
         )}
+        {loaded && view.name === 'overpay' && (() => {
+          const m = mortgages.find((x) => x.id === view.mortgageId);
+          if (!m) {
+            setView({ name: 'dashboard' });
+            return null;
+          }
+          return (
+            <OverpayScreen
+              m={m}
+              todayIso={today}
+              onUpdate={handleUpdate}
+              onBack={() => setView({ name: 'dashboard' })}
+            />
+          );
+        })()}
         {loaded && view.name === 'wizard' && (
           <WizardScreen
             editing={view.editing}

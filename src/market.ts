@@ -6,7 +6,8 @@
 // Honesty rules (FCA-safe, generic maths only): everything shown is labelled
 // as a BoE *average quoted* rate with its as-of month, never a quote or a
 // product recommendation; data more than 2 months old is flagged stale.
-import { derivePayment, projectBalance, wholeMonthsBetween, daysUntil, ltvPct, currentBalance } from './amortisation';
+import { derivePayment, projectBalance, wholeMonthsBetween, daysUntil, ltvPct } from './amortisation';
+import { effectiveBalance } from './overpay';
 import type { Mortgage } from './types';
 
 export interface MarketRate {
@@ -121,7 +122,7 @@ export function compareToMarket(
   todayIso: string,
   fixYears: FixYears,
 ): Comparison | null {
-  const balanceToday = currentBalance(m, todayIso);
+  const balanceToday = effectiveBalance(m, todayIso);
   const ltv = ltvPct(balanceToday, m.propertyValue);
   const { band, note: ltvNote } = bandForLtv(ltv);
   const picked = seriesFor(fixYears, band);

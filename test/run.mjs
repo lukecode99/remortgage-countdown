@@ -15,7 +15,7 @@ import assert from 'node:assert';
 
 const outDir = mkdtempSync(join(tmpdir(), 'rm-app-test-'));
 const root = join(import.meta.dirname, '..');
-for (const mod of ['amortisation', 'format', 'wizard', 'market']) {
+for (const mod of ['amortisation', 'format', 'wizard', 'market', 'overpay']) {
   execSync(
     `npx esbuild src/${mod}.ts --bundle --format=esm --platform=node --outfile=${join(outDir, mod + '.mjs')}`,
     { cwd: root, stdio: 'pipe' },
@@ -25,6 +25,7 @@ const am = await import(join(outDir, 'amortisation.mjs'));
 const fmt = await import(join(outDir, 'format.mjs'));
 const wiz = await import(join(outDir, 'wizard.mjs'));
 const mkt = await import(join(outDir, 'market.mjs'));
+const op = await import(join(outDir, 'overpay.mjs'));
 
 let passed = 0;
 const test = (name, fn) => {
@@ -349,6 +350,128 @@ test('prefers the user-entered lender SVR', () => {
   // Interest-only keeps the balance at £100k: 100000 × 7.99%/12 = £665.83/mo.
   near(d.paymentOnRevert, 665.83, 0.01);
   near(d.extraMonthly, 415.83, 0.01);
+});
+
+console.log('overpay — instant impact worked examples');
+// Hand-simulated: £1,000 at 12% (1%/mo) paying £100/mo clears in 11 months
+// with £58.98 total interest. A £100 one-off up front clears it in 10 months
+// (£47.94 interest, saving £11.05); £50/mo extra clears it in 7 months
+// (£40.11 interest, saving £18.88, cutting 4 months).
+test('baseline: £1,000 at 12% paying £100/mo → 11 months, £58.98 interest', () => {
+  const i = op.overpaymentImpact(1000, 12, 100, 24, 'repayment', 0, 0);
+  assert.strictEqual(i.baselineMonths, 11);
+  near(i.baselineInterest, 58.98, 0.01);
+});
+test('£100 one-off → 10 months, £47.94 interest, saves £11.05, cuts 1 month', () => {
+  const i = op.overpaymentImpact(1000, 12, 100, 24, 'repayment', 100, 0);
+  assert.strictEqual(i.newMonths, 10);
+  assert.strictEqual(i.monthsCut, 1);
+  near(i.newInterest, 47.94, 0.01);
+  near(i.interestSaved, 11.05, 0.01);
+});
+test('£50/mo recurring → 7 months, £40.11 interest, saves £18.88, cuts 4 months', () => {
+  const i = op.overpaymentImpact(1000, 12, 100, 24, 'repayment', 0, 50);
+  assert.strictEqual(i.newMonths, 7);
+  assert.strictEqual(i.monthsCut, 4);
+  near(i.newInterest, 40.11, 0.01);
+  near(i.interestSaved, 18.88, 0.01);
+});
+test('interest-only: £10k one-off on £100k at 6% saves exactly £600 over 12 months', () => {
+  // Interest is 0.5%/mo on the outstanding balance: £6,000/yr on £100k,
+  // £5,400/yr on £90k — the term doesn't shorten, only the interest drops.
+  const i = op.overpaymentImpact(100000, 6, 500, 12, 'interest-only', 10000, 0);
+  near(i.baselineInterest, 6000, 0.01);
+  near(i.newInterest, 5400, 0.01);
+  near(i.interestSaved, 600, 0.01);
+  assert.strictEqual(i.monthsCut, 0);
+});
+
+console.log('overpay — allowance tracker');
+const allowM = {
+  ...baseMortgage, // balance 100000, balanceAsOf TODAY, dealEndDate '2027-03-31'
+  overpayments: [
+    { id: 'a', date: '2026-03-30', amount: 500 }, // day before the allowance year starts
+    { id: 'b', date: '2026-04-15', amount: 3000 },
+  ],
+};
+test('anniversary year runs deal-end date to deal-end date', () => {
+  const y = op.allowanceYear(allowM, TODAY);
+  assert.deepStrictEqual(y, { start: '2026-03-31', resetDate: '2027-03-31' });
+});
+test('10% of £100k = £10k limit; only in-year overpayments count', () => {
+  const s = op.allowanceStatus(allowM, TODAY);
+  assert.strictEqual(s.limit, 10000);
+  assert.strictEqual(s.used, 3000); // the £500 on 30 Mar predates the year
+  assert.strictEqual(s.left, 7000);
+  assert.strictEqual(s.resetDate, '2027-03-31');
+  assert.strictEqual(s.allowancePct, 10);
+});
+test('breach warning fires only when the total would exceed the limit', () => {
+  assert.strictEqual(op.wouldBreachAllowance(allowM, TODAY, 7500), true);
+  assert.strictEqual(op.wouldBreachAllowance(allowM, TODAY, 7000), false); // exactly at the limit is fine
+});
+test('calendar mode resets 1 Jan and counts the whole calendar year', () => {
+  const m = { ...allowM, allowanceReset: 'calendar' };
+  const y = op.allowanceYear(m, TODAY);
+  assert.deepStrictEqual(y, { start: '2026-01-01', resetDate: '2027-01-01' });
+  assert.strictEqual(op.allowanceStatus(m, TODAY).used, 3500); // both ops fall in 2026
+});
+test('allowance percentage is configurable', () => {
+  const s = op.allowanceStatus({ ...allowM, allowancePct: 5 }, TODAY);
+  assert.strictEqual(s.limit, 5000);
+  assert.strictEqual(op.wouldBreachAllowance({ ...allowM, allowancePct: 5 }, TODAY, 2001), true);
+});
+
+console.log('overpay — overpay vs save');
+test('higher-rate saver at 6.5% keeps 3.9% — overpaying a 5% mortgage wins', () => {
+  const v = op.overpayVsSave(5, 6.5, 'higher');
+  near(v.postTaxSavingsPct, 3.9, 1e-9);
+  assert.strictEqual(v.verdict, 'overpay');
+});
+test('same rates in an ISA keep the full 6.5% — verdict flips to save', () => {
+  const v = op.overpayVsSave(5, 6.5, 'isa');
+  assert.strictEqual(v.postTaxSavingsPct, 6.5);
+  assert.strictEqual(v.verdict, 'save');
+});
+test('basic-rate 5% keeps exactly 4% — dead heat with a 4% mortgage', () => {
+  assert.strictEqual(op.overpayVsSave(4, 5, 'basic').verdict, 'tie');
+});
+
+console.log('overpay — effective balance (dashboard projection)');
+const effM = {
+  ...baseMortgage, balance: 100000, balanceAsOf: '2025-07-05', ratePct: 6,
+  monthlyPayment: 644.3, remainingTermMonths: 300,
+};
+test('no logged overpayments → same as the rolled-forward balance', () => {
+  assert.strictEqual(op.effectiveBalance(effM, '2026-07-05'), am.currentBalance(effM, '2026-07-05'));
+});
+test('a £5k overpayment compounds at the mortgage rate: £5,308.39 off after a year', () => {
+  const m = { ...effM, overpayments: [{ id: 'a', date: '2025-07-05', amount: 5000 }] };
+  const base = am.currentBalance(effM, '2026-07-05');
+  near(op.effectiveBalance(m, '2026-07-05'), base - 5000 * Math.pow(1.005, 12), 0.01);
+  near(base - op.effectiveBalance(m, '2026-07-05'), 5308.39, 0.01);
+});
+test('interest-only balances just drop by the amount', () => {
+  const m = { ...effM, repaymentType: 'interest-only', overpayments: [{ id: 'a', date: '2025-07-05', amount: 5000 }] };
+  assert.strictEqual(op.effectiveBalance(m, '2026-07-05'), 95000);
+});
+test('overpayments predating the entered balance are ignored (edit re-baselines)', () => {
+  const m = { ...effM, overpayments: [{ id: 'a', date: '2025-07-04', amount: 5000 }] };
+  assert.strictEqual(op.effectiveBalance(m, '2026-07-05'), am.currentBalance(effM, '2026-07-05'));
+});
+test('market comparison uses the overpayment-adjusted balance', () => {
+  const withOp = { ...baseMortgage, overpayments: [{ id: 'a', date: TODAY, amount: 20000 }] };
+  const c = mkt.compareToMarket(withOp, SNAPSHOT, TODAY, 2);
+  near(c.balanceToday, 80000, 0.01);
+  assert.ok(c.newPayment < 533.37); // smaller balance, smaller payment
+});
+
+console.log('overpay — logging');
+test('addOverpayment keeps the list date-sorted; removeOverpayment filters by id', () => {
+  let list = op.addOverpayment(undefined, { id: 'b', date: '2026-05-01', amount: 200 });
+  list = op.addOverpayment(list, { id: 'a', date: '2026-04-01', amount: 100 });
+  assert.deepStrictEqual(list.map((o) => o.id), ['a', 'b']);
+  assert.deepStrictEqual(op.removeOverpayment(list, 'a').map((o) => o.id), ['b']);
 });
 
 console.log(`\n${passed} tests passed`);
