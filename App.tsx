@@ -1,0 +1,66 @@
+import React, { useEffect, useState } from 'react';
+import { StatusBar } from 'expo-status-bar';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import DashboardScreen from './src/screens/DashboardScreen';
+import WizardScreen from './src/screens/WizardScreen';
+import { todayIso } from './src/format';
+import { deleteMortgage, loadMortgages, newId, saveMortgage } from './src/storage';
+import { colors } from './src/theme';
+import { Mortgage } from './src/types';
+import { MortgageDraft } from './src/wizard';
+
+type View = { name: 'dashboard' } | { name: 'wizard'; editing: Mortgage | null };
+
+export default function App() {
+  const [mortgages, setMortgages] = useState<Mortgage[]>([]);
+  const [view, setView] = useState<View>({ name: 'dashboard' });
+  const [loaded, setLoaded] = useState(false);
+  const today = todayIso();
+
+  useEffect(() => {
+    loadMortgages().then((list) => {
+      setMortgages(list);
+      setLoaded(true);
+      if (list.length === 0) setView({ name: 'wizard', editing: null });
+    });
+  }, []);
+
+  const handleSave = async (draft: MortgageDraft) => {
+    const editing = view.name === 'wizard' ? view.editing : null;
+    const now = new Date().toISOString();
+    const m: Mortgage = editing
+      ? { ...editing, ...draft, balanceAsOf: today, updatedAt: now }
+      : { ...draft, id: newId(), balanceAsOf: today, createdAt: now, updatedAt: now };
+    setMortgages(await saveMortgage(m));
+    setView({ name: 'dashboard' });
+  };
+
+  const handleDelete = async (m: Mortgage) => {
+    setMortgages(await deleteMortgage(m.id));
+  };
+
+  return (
+    <SafeAreaProvider>
+      <SafeAreaView style={{ flex: 1, backgroundColor: colors.bg }} edges={['top']}>
+        <StatusBar style="light" />
+        {loaded && view.name === 'dashboard' && (
+          <DashboardScreen
+            mortgages={mortgages}
+            todayIso={today}
+            onAdd={() => setView({ name: 'wizard', editing: null })}
+            onEdit={(m) => setView({ name: 'wizard', editing: m })}
+            onDelete={handleDelete}
+          />
+        )}
+        {loaded && view.name === 'wizard' && (
+          <WizardScreen
+            editing={view.editing}
+            todayIso={today}
+            onSave={handleSave}
+            onCancel={() => setView({ name: 'dashboard' })}
+          />
+        )}
+      </SafeAreaView>
+    </SafeAreaProvider>
+  );
+}

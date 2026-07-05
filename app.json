@@ -1,0 +1,31 @@
+{
+  "expo": {
+    "name": "Remortgage Countdown",
+    "slug": "remortgage-countdown",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "remortgage",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0E1220",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0E1220"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": false,
+      "bundleIdentifier": "com.lukeholder.remortgagecountdown",
+      "infoPlist": {
+        "CFBundleDisplayName": "Remortgage",
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.lukeholder.remortgagecountdown"
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
+  }
+}
