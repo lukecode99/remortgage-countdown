@@ -63,6 +63,15 @@ No accounts, no sign-up, no ads. Everything stays on the device
   UserDefaults, Swift compiles on the EAS build (RM-8). Live Activity was
   deliberately deferred: a months-long countdown doesn't fit an 8-hour
   activity budget.
+- **Broker referrals (dormant)** — a config-driven referral layer
+  (`src/referrals.ts`) shipped with every flag off, so no referral UI
+  renders anywhere. When a broker programme approves us: one partner, four
+  placement flags (final-6-months dashboard, saving card, positive ERC
+  break-even, SVR-drift warning), https-only links, broker-approved copy
+  only (an unmistakable placeholder renders under test flags), the FCA
+  risk warning on every promotion, a commission disclosure in About, and a
+  local click log capped at 200 entries. Partial or malformed config
+  renders nothing.
 
 ## Engine
 

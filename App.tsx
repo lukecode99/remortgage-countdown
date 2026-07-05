@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import AboutScreen from './src/screens/AboutScreen';
 import DashboardScreen from './src/screens/DashboardScreen';
 import OverpayScreen from './src/screens/OverpayScreen';
 import SwitchScreen from './src/screens/SwitchScreen';
@@ -19,7 +20,8 @@ type View =
   | { name: 'dashboard' }
   | { name: 'wizard'; editing: Mortgage | null }
   | { name: 'overpay'; mortgageId: string }
-  | { name: 'switch'; mortgageId: string };
+  | { name: 'switch'; mortgageId: string }
+  | { name: 'about' };
 
 export default function App() {
   const [mortgages, setMortgages] = useState<Mortgage[]>([]);
@@ -85,6 +87,7 @@ export default function App() {
             onSwitch={(m) => setView({ name: 'switch', mortgageId: m.id })}
             onDelete={handleDelete}
             onTestNotifications={() => triggerTestNotification(mortgages, today, market)}
+            onAbout={() => setView({ name: 'about' })}
           />
         )}
         {loaded && view.name === 'overpay' && (() => {
@@ -112,6 +115,7 @@ export default function App() {
             <SwitchScreen m={m} market={market} todayIso={today} onBack={() => setView({ name: 'dashboard' })} />
           );
         })()}
+        {loaded && view.name === 'about' && <AboutScreen onBack={() => setView({ name: 'dashboard' })} />}
         {loaded && view.name === 'wizard' && (
           <WizardScreen
             editing={view.editing}

@@ -4,6 +4,7 @@ import { compareToMarket, FIX_OPTIONS, FixYears, MarketSnapshot, svrDrift } from
 import { formatPct, formatPounds, formatPoundsPence } from '../format';
 import { colors, radii } from '../theme';
 import { Mortgage } from '../types';
+import ReferralCta from './ReferralCta';
 
 interface Props {
   m: Mortgage;
@@ -62,6 +63,7 @@ export default function MarketCompare({ m, snapshot, todayIso }: Props) {
       ) : null}
 
       <Text style={[styles.saving, { color: saves ? colors.good : colors.textDim }]}>{savingLine}</Text>
+      {saves && <ReferralCta placement="market-saving" />}
 
       <Pressable onPress={() => setShowMaths((s) => !s)} accessibilityRole="button">
         <Text style={styles.mathsToggle}>{showMaths ? 'Hide the maths' : 'Show the maths'}</Text>
@@ -98,6 +100,7 @@ export default function MarketCompare({ m, snapshot, todayIso }: Props) {
             /mo — {formatPounds(Math.abs(drift.extraMonthly))}/mo {drift.extraMonthly >= 0 ? 'more' : 'less'}{' '}
             than now.
           </Text>
+          <ReferralCta placement="svr-drift" />
         </View>
       )}
     </View>

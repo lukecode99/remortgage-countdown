@@ -1,7 +1,9 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { appendClick, ReferralClick } from './referrals';
 import { MAX_MORTGAGES, Mortgage } from './types';
 
 const KEY = 'mortgages:v1';
+const CLICKS_KEY = 'referral-clicks:v1';
 
 export async function loadMortgages(): Promise<Mortgage[]> {
   try {
@@ -35,6 +37,22 @@ export async function deleteMortgage(id: string): Promise<Mortgage[]> {
   const list = (await loadMortgages()).filter((m) => m.id !== id);
   await persist(list);
   return list;
+}
+
+export async function loadReferralClicks(): Promise<ReferralClick[]> {
+  try {
+    const raw = await AsyncStorage.getItem(CLICKS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Prepend a click to the capped local log (never leaves the device). */
+export async function logReferralClick(entry: ReferralClick): Promise<void> {
+  const log = appendClick(await loadReferralClicks(), entry);
+  await AsyncStorage.setItem(CLICKS_KEY, JSON.stringify(log));
 }
 
 export const newId = (): string =>

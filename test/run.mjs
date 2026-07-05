@@ -15,7 +15,7 @@ import assert from 'node:assert';
 
 const outDir = mkdtempSync(join(tmpdir(), 'rm-app-test-'));
 const root = join(import.meta.dirname, '..');
-for (const mod of ['amortisation', 'format', 'wizard', 'market', 'overpay', 'breakeven', 'notifications', 'widgetData']) {
+for (const mod of ['amortisation', 'format', 'wizard', 'market', 'overpay', 'breakeven', 'notifications', 'widgetData', 'referrals']) {
   execSync(
     `npx esbuild src/${mod}.ts --bundle --format=esm --platform=node --outfile=${join(outDir, mod + '.mjs')}`,
     { cwd: root, stdio: 'pipe' },
@@ -29,6 +29,7 @@ const op = await import(join(outDir, 'overpay.mjs'));
 const bev = await import(join(outDir, 'breakeven.mjs'));
 const ntf = await import(join(outDir, 'notifications.mjs'));
 const wd = await import(join(outDir, 'widgetData.mjs'));
+const ref = await import(join(outDir, 'referrals.mjs'));
 
 let passed = 0;
 const test = (name, fn) => {
@@ -666,6 +667,71 @@ test('no market data → rate-only payload; no mortgages → null', () => {
   assert.strictEqual(p.benchmarkAsOf, null);
   assert.strictEqual(p.yourRatePct, 6);
   assert.strictEqual(wd.widgetPayload([], TODAY, SNAPSHOT), null);
+});
+
+console.log('referrals — flags off, FCA-aware');
+const testConfig = {
+  enabled: true,
+  partner: 'tembo',
+  url: 'https://partner.example/track?src=rc',
+  cta: '',
+  placements: {
+    'push-landing': true,
+    'market-saving': true,
+    'breakeven-positive': true,
+    'svr-drift': true,
+  },
+};
+test('shipped config renders zero referral links at every placement', () => {
+  for (const p of ref.REFERRAL_PLACEMENTS) {
+    assert.strictEqual(ref.referralFor(p), null);
+    assert.strictEqual(ref.referralFor(p, ref.REFERRAL_CONFIG), null);
+  }
+  assert.strictEqual(ref.REFERRAL_CONFIG.enabled, false);
+  assert.strictEqual(ref.REFERRAL_CONFIG.partner, '');
+  assert.ok(Object.values(ref.REFERRAL_CONFIG.placements).every((v) => v === false));
+});
+test('test flag → CTA with the verbatim risk warning and a placeholder for approved copy', () => {
+  const offer = ref.referralFor('market-saving', testConfig);
+  assert.strictEqual(offer.partnerName, 'Tembo');
+  assert.strictEqual(offer.url, testConfig.url);
+  assert.strictEqual(offer.cta, ref.CTA_PLACEHOLDER);
+  assert.match(offer.cta, /PLACEHOLDER/);
+  assert.strictEqual(
+    offer.riskWarning,
+    'Your home may be repossessed if you do not keep up repayments on your mortgage.',
+  );
+});
+test('broker-approved copy replaces the placeholder once supplied', () => {
+  const offer = ref.referralFor('svr-drift', { ...testConfig, cta: 'Approved partner copy here.' });
+  assert.strictEqual(offer.cta, 'Approved partner copy here.');
+});
+test('partial or malformed config renders nothing', () => {
+  assert.strictEqual(ref.referralFor('market-saving', { ...testConfig, url: '' }), null);
+  assert.strictEqual(ref.referralFor('market-saving', { ...testConfig, url: 'not a url' }), null);
+  assert.strictEqual(ref.referralFor('market-saving', { ...testConfig, url: 'http://insecure.example' }), null);
+  assert.strictEqual(ref.referralFor('market-saving', { ...testConfig, partner: '' }), null);
+  assert.strictEqual(ref.referralFor('market-saving', { ...testConfig, partner: 'unknown-broker' }), null);
+  assert.strictEqual(ref.referralFor('market-saving', { ...testConfig, enabled: false }), null);
+  assert.strictEqual(ref.referralFor('market-saving', { ...testConfig, placements: undefined }), null);
+  const oneOff = { ...testConfig, placements: { ...testConfig.placements, 'market-saving': false } };
+  assert.strictEqual(ref.referralFor('market-saving', oneOff), null);
+  assert.ok(ref.referralFor('svr-drift', oneOff)); // other placements unaffected
+});
+test('click log is newest-first and capped at 200', () => {
+  let log = [];
+  for (let i = 0; i < 250; i++) {
+    log = ref.appendClick(log, { timestamp: i, placement: 'market-saving', partner: 'tembo', url: 'https://x' });
+  }
+  assert.strictEqual(log.length, ref.MAX_CLICKS);
+  assert.strictEqual(ref.MAX_CLICKS, 200);
+  assert.strictEqual(log[0].timestamp, 249); // newest first
+  assert.strictEqual(log[199].timestamp, 50); // oldest surviving entry
+});
+test('commission disclosure exists for the About screen and says what it must', () => {
+  assert.match(ref.COMMISSION_DISCLOSURE, /commission/i);
+  assert.match(ref.COMMISSION_DISCLOSURE, /introducer/i);
+  assert.match(ref.COMMISSION_DISCLOSURE, /not.*advi|advice comes from the broker/i);
 });
 
 console.log(`\n${passed} tests passed`);

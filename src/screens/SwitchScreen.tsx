@@ -3,6 +3,7 @@ import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text
 import { ercPctNow } from '../amortisation';
 import Field from '../components/Field';
 import Pills from '../components/Pills';
+import ReferralCta from '../components/ReferralCta';
 import { formatPct, formatPounds, formatPoundsPence } from '../format';
 import { compareToMarket, MarketSnapshot, monthLabel } from '../market';
 import { ercAmountNow, ercBreakEvenFrom, FEE_DEFAULTS, OptionCost, ptVsRemortgage } from '../breakeven';
@@ -147,6 +148,7 @@ export default function SwitchScreen({ m, market, todayIso, onBack }: Props) {
                     recovered at {formatPoundsPence(be.monthlySaving)}/month.
                     {be.worthItAfter ? ` Worth it if you'll stay past ${monthLabel(be.worthItAfter)}.` : ''}
                   </Text>
+                  <ReferralCta placement="breakeven-positive" />
                 </>
               )}
             </View>

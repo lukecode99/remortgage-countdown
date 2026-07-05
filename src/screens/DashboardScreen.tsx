@@ -12,6 +12,7 @@ import {
   formatTerm,
 } from '../format';
 import MarketCompare from '../components/MarketCompare';
+import ReferralCta from '../components/ReferralCta';
 import { MarketSnapshot } from '../market';
 import { colors, radii } from '../theme';
 import { MAX_MORTGAGES, Mortgage } from '../types';
@@ -27,6 +28,7 @@ interface Props {
   onDelete: (m: Mortgage) => void;
   /** QA path — fires a real test notification in 2s, resolves to a summary. */
   onTestNotifications: () => Promise<string>;
+  onAbout: () => void;
 }
 
 function confirmDelete(m: Mortgage, onDelete: (m: Mortgage) => void) {
@@ -96,6 +98,9 @@ function MortgageCard({ m, todayIso, market, onEdit, onOverpay, onSwitch, onDele
 
       <MarketCompare m={m} snapshot={market} todayIso={todayIso} />
 
+      {/* T-6mo push lands on the dashboard — the placement covers the final 6 months. */}
+      {cd.days > 0 && cd.days <= 183 && <ReferralCta placement="push-landing" />}
+
       <View style={styles.cardButtons}>
         <Pressable style={styles.cardBtn} onPress={() => onEdit(m)} accessibilityRole="button">
           <Text style={styles.cardBtnText}>Edit</Text>
@@ -114,7 +119,7 @@ function MortgageCard({ m, todayIso, market, onEdit, onOverpay, onSwitch, onDele
   );
 }
 
-export default function DashboardScreen({ mortgages, todayIso, market, onAdd, onEdit, onOverpay, onSwitch, onDelete, onTestNotifications }: Props) {
+export default function DashboardScreen({ mortgages, todayIso, market, onAdd, onEdit, onOverpay, onSwitch, onDelete, onTestNotifications, onAbout }: Props) {
   const sorted = [...mortgages].sort((a, b) => a.dealEndDate.localeCompare(b.dealEndDate));
   const atCap = mortgages.length >= MAX_MORTGAGES;
   const [notifyStatus, setNotifyStatus] = React.useState<string | null>(null);
@@ -154,6 +159,10 @@ export default function DashboardScreen({ mortgages, todayIso, market, onAdd, on
         </Pressable>
       )}
       {notifyStatus && <Text style={styles.testNotifyStatus}>{notifyStatus}</Text>}
+
+      <Pressable style={styles.testNotify} onPress={onAbout} accessibilityRole="button">
+        <Text style={styles.testNotifyText}>About & disclosures</Text>
+      </Pressable>
     </ScrollView>
   );
 }
