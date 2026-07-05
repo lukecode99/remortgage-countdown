@@ -8,7 +8,9 @@ import WizardScreen from './src/screens/WizardScreen';
 import { fetchMarket } from './src/api';
 import { todayIso } from './src/format';
 import { MarketSnapshot } from './src/market';
+import { syncNotifications, triggerTestNotification } from './src/notify';
 import { deleteMortgage, loadMortgages, newId, saveMortgage } from './src/storage';
+import { syncWidget } from './src/widget';
 import { colors } from './src/theme';
 import { Mortgage } from './src/types';
 import { MortgageDraft } from './src/wizard';
@@ -34,6 +36,19 @@ export default function App() {
     });
     fetchMarket().then(setMarket); // comparison block renders when this lands
   }, []);
+
+  // Keep the OS notification schedule and the home-screen widget in step with
+  // the data: any change (deal date edit, new/deleted mortgage, market
+  // refresh) regenerates the plan and rewrites the widget payload.
+  useEffect(() => {
+    if (!loaded) return;
+    syncNotifications(mortgages, today, market).catch(() => {});
+    try {
+      syncWidget(mortgages, today, market);
+    } catch {
+      // native module absent (Expo Go / web) — widget sync is a no-op
+    }
+  }, [loaded, mortgages, market]);
 
   const handleSave = async (draft: MortgageDraft) => {
     const editing = view.name === 'wizard' ? view.editing : null;
@@ -69,6 +84,7 @@ export default function App() {
             onOverpay={(m) => setView({ name: 'overpay', mortgageId: m.id })}
             onSwitch={(m) => setView({ name: 'switch', mortgageId: m.id })}
             onDelete={handleDelete}
+            onTestNotifications={() => triggerTestNotification(mortgages, today, market)}
           />
         )}
         {loaded && view.name === 'overpay' && (() => {

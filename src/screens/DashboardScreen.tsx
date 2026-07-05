@@ -25,6 +25,8 @@ interface Props {
   onOverpay: (m: Mortgage) => void;
   onSwitch: (m: Mortgage) => void;
   onDelete: (m: Mortgage) => void;
+  /** QA path — fires a real test notification in 2s, resolves to a summary. */
+  onTestNotifications: () => Promise<string>;
 }
 
 function confirmDelete(m: Mortgage, onDelete: (m: Mortgage) => void) {
@@ -112,9 +114,10 @@ function MortgageCard({ m, todayIso, market, onEdit, onOverpay, onSwitch, onDele
   );
 }
 
-export default function DashboardScreen({ mortgages, todayIso, market, onAdd, onEdit, onOverpay, onSwitch, onDelete }: Props) {
+export default function DashboardScreen({ mortgages, todayIso, market, onAdd, onEdit, onOverpay, onSwitch, onDelete, onTestNotifications }: Props) {
   const sorted = [...mortgages].sort((a, b) => a.dealEndDate.localeCompare(b.dealEndDate));
   const atCap = mortgages.length >= MAX_MORTGAGES;
+  const [notifyStatus, setNotifyStatus] = React.useState<string | null>(null);
 
   return (
     <ScrollView style={styles.flex} contentContainerStyle={styles.scroll}>
@@ -140,6 +143,17 @@ export default function DashboardScreen({ mortgages, todayIso, market, onAdd, on
       >
         <Text style={styles.addText}>{atCap ? `Maximum of ${MAX_MORTGAGES} mortgages` : '+ Add a mortgage'}</Text>
       </Pressable>
+
+      {mortgages.length > 0 && (
+        <Pressable
+          style={styles.testNotify}
+          onPress={() => onTestNotifications().then(setNotifyStatus)}
+          accessibilityRole="button"
+        >
+          <Text style={styles.testNotifyText}>Test reminders</Text>
+        </Pressable>
+      )}
+      {notifyStatus && <Text style={styles.testNotifyStatus}>{notifyStatus}</Text>}
     </ScrollView>
   );
 }
@@ -198,4 +212,7 @@ const styles = StyleSheet.create({
   },
   addDisabled: { opacity: 0.5 },
   addText: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  testNotify: { alignSelf: 'center', marginTop: 16, paddingVertical: 6, paddingHorizontal: 12 },
+  testNotifyText: { color: colors.textDim, fontSize: 13, textDecorationLine: 'underline' },
+  testNotifyStatus: { color: colors.textDim, fontSize: 12, textAlign: 'center', marginTop: 4 },
 });

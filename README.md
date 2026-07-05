@@ -49,6 +49,20 @@ No accounts, no sign-up, no ads. Everything stays on the device
   accrued), with a toggle for the ERC-free transfer window lenders often
   offer in the final 3–6 months. Every assumption is a visible, editable
   input and the output is a factual cost table, never a recommendation.
+- **Reminders & widget** — the retention layer, all local (no server): (1)
+  scheduled notifications at 6 months ("you can lock a new deal today and
+  still switch if rates fall"), 3 months, 1 month, 1 week and on deal-end
+  day (with the £/mo cost of drifting onto the revert rate), plus the
+  overpayment-allowance reset day — the whole schedule regenerates whenever
+  the deal date is edited, and a "Test reminders" link on the dashboard
+  fires a real one in 2 seconds for QA; (2) an evening nudge on each Bank
+  of England MPC decision day (static calendar, personalised impact on
+  next app open); (3) an iOS home-screen widget (`targets/widget/`, via
+  `@bacons/apple-targets`) showing the day countdown and your rate vs the
+  BoE benchmark, deep-linking into the app — data crosses via App Group
+  UserDefaults, Swift compiles on the EAS build (RM-8). Live Activity was
+  deliberately deferred: a months-long countdown doesn't fit an 8-hour
+  activity budget.
 
 ## Engine
 

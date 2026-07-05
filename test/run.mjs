@@ -15,7 +15,7 @@ import assert from 'node:assert';
 
 const outDir = mkdtempSync(join(tmpdir(), 'rm-app-test-'));
 const root = join(import.meta.dirname, '..');
-for (const mod of ['amortisation', 'format', 'wizard', 'market', 'overpay', 'breakeven']) {
+for (const mod of ['amortisation', 'format', 'wizard', 'market', 'overpay', 'breakeven', 'notifications', 'widgetData']) {
   execSync(
     `npx esbuild src/${mod}.ts --bundle --format=esm --platform=node --outfile=${join(outDir, mod + '.mjs')}`,
     { cwd: root, stdio: 'pipe' },
@@ -27,6 +27,8 @@ const wiz = await import(join(outDir, 'wizard.mjs'));
 const mkt = await import(join(outDir, 'market.mjs'));
 const op = await import(join(outDir, 'overpay.mjs'));
 const bev = await import(join(outDir, 'breakeven.mjs'));
+const ntf = await import(join(outDir, 'notifications.mjs'));
+const wd = await import(join(outDir, 'widgetData.mjs'));
 
 let passed = 0;
 const test = (name, fn) => {
@@ -554,6 +556,116 @@ test('repayment mortgages compare on interest, not outgoings', () => {
   assert.ok(r.pt.interest > 0 && r.pt.interest < 60 * r.pt.monthlyPayment);
   assert.ok(r.remortgage.balanceEnd < 100000 && r.pt.balanceEnd < 100000);
   assert.strictEqual(r.cheaper, 'remortgage');
+});
+
+console.log('notifications — scheduler maths');
+// baseMortgage deal ends 2027-03-31; today is 2026-07-05. Hand-computed
+// offsets (day-clamped like isoAddMonths):
+//   T-6mo 2026-09-30 (Sep has no 31st) · T-3mo 2026-12-31 ·
+//   T-1mo 2027-02-28 · T-1wk 2027-03-24 · deal end 2027-03-31.
+// Allowance reset (anniversary) falls on the deal-end anniversary =
+// 2027-03-31 = deal end itself → deliberately skipped. Future MPC days
+// after 2026-07-05: Jul 30, Sep 17, Nov 5, Dec 17 → 4 entries at 6pm.
+test('isoAddDays: calendar-exact, month/year boundaries and leap day', () => {
+  assert.strictEqual(ntf.isoAddDays('2027-03-31', -7), '2027-03-24');
+  assert.strictEqual(ntf.isoAddDays('2026-03-01', -7), '2026-02-22');
+  assert.strictEqual(ntf.isoAddDays('2026-01-01', -1), '2025-12-31');
+  assert.strictEqual(ntf.isoAddDays('2028-03-01', -1), '2028-02-29'); // leap year
+});
+test('milestones land at the hand-computed offsets', () => {
+  const plan = ntf.plannedNotifications([baseMortgage], TODAY, SNAPSHOT);
+  const byKind = Object.fromEntries(plan.filter((n) => n.kind !== 'mpc').map((n) => [n.kind, n.date]));
+  assert.deepStrictEqual(byKind, {
+    'six-months': '2026-09-30',
+    'three-months': '2026-12-31',
+    'one-month': '2027-02-28',
+    'one-week': '2027-03-24',
+    'deal-end': '2027-03-31',
+  });
+});
+test('plan is future-only, date-sorted, with stable ids and 9am milestones', () => {
+  const plan = ntf.plannedNotifications([baseMortgage], TODAY, SNAPSHOT);
+  assert.strictEqual(plan.length, 9); // 5 milestones + 4 future MPC days
+  assert.ok(plan.every((n) => n.date > TODAY));
+  const dates = plan.map((n) => n.date);
+  assert.deepStrictEqual(dates, [...dates].sort());
+  assert.strictEqual(plan[0].id, 'mpc:2026-07-30'); // nearest future entry
+  assert.ok(plan.some((n) => n.id === 'm1:deal-end'));
+  assert.ok(plan.filter((n) => n.kind !== 'mpc').every((n) => n.hour === 9));
+});
+test('past milestones are dropped as today advances', () => {
+  // By mid-Jan 2027 the 6- and 3-month marks and every 2026 MPC day have
+  // passed; only 1-month, 1-week and deal-end remain.
+  const plan = ntf.plannedNotifications([baseMortgage], '2027-01-15', SNAPSHOT);
+  assert.deepStrictEqual(plan.map((n) => n.kind), ['one-month', 'one-week', 'deal-end']);
+});
+test('editing the deal date regenerates every offset (reschedule-on-edit)', () => {
+  const edited = { ...baseMortgage, dealEndDate: '2027-06-15' };
+  const plan = ntf.plannedNotifications([edited], TODAY, SNAPSHOT);
+  const byKind = Object.fromEntries(plan.filter((n) => n.kind !== 'mpc').map((n) => [n.kind, n.date]));
+  assert.deepStrictEqual(byKind, {
+    'six-months': '2026-12-15',
+    'three-months': '2027-03-15',
+    'one-month': '2027-05-15',
+    'one-week': '2027-06-08',
+    'deal-end': '2027-06-15',
+  });
+});
+test('MPC entries fire at 6pm and only exist when a mortgage does', () => {
+  const plan = ntf.plannedNotifications([baseMortgage], TODAY, SNAPSHOT);
+  const mpc = plan.filter((n) => n.kind === 'mpc');
+  assert.deepStrictEqual(mpc.map((n) => n.date), ['2026-07-30', '2026-09-17', '2026-11-05', '2026-12-17']);
+  assert.ok(mpc.every((n) => n.hour === 18));
+  assert.deepStrictEqual(ntf.plannedNotifications([], TODAY, SNAPSHOT), []);
+});
+test('calendar-mode allowance reset gets its own 1 Jan entry', () => {
+  const m = { ...baseMortgage, allowanceReset: 'calendar' };
+  const reset = ntf.plannedNotifications([m], TODAY, SNAPSHOT).find((n) => n.kind === 'allowance-reset');
+  assert.strictEqual(reset.date, '2027-01-01');
+  // anniversary mode coincides with the deal-end day → no duplicate entry
+  const anniv = ntf.plannedNotifications([baseMortgage], TODAY, SNAPSHOT);
+  assert.ok(!anniv.some((n) => n.kind === 'allowance-reset'));
+});
+test('revertExtraMonthly: interest-only £100k, 5% → SVR 8% costs £250/mo more', () => {
+  // Exact: 100,000 × (8% − 5%) / 12 = £250. Balance never amortises, so the
+  // figure is independent of when the deal ends.
+  const m = {
+    ...baseMortgage, repaymentType: 'interest-only', ratePct: 5,
+    monthlyPayment: 416.67, lenderSvrPct: 8,
+  };
+  near(ntf.revertExtraMonthly(m, SNAPSHOT), 250, 0.01);
+});
+test('revertExtraMonthly: reverting onto the same rate costs ~nothing', () => {
+  // Projecting a correct annuity forward and re-deriving the payment over
+  // the remaining term returns the original payment (within pence rounding).
+  const m = { ...baseMortgage, lenderSvrPct: 6 };
+  near(ntf.revertExtraMonthly(m, SNAPSHOT), 0, 0.05);
+});
+test('deal-end body carries the £/mo drift figure from the BoE revert rate', () => {
+  const dealEnd = ntf.plannedNotifications([baseMortgage], TODAY, SNAPSHOT).find((n) => n.kind === 'deal-end');
+  assert.ok(ntf.revertExtraMonthly(baseMortgage, SNAPSHOT) > 0); // 6.6% SVR vs 6% deal
+  assert.match(dealEnd.body, /£\d+\/mo more/);
+  // no market data and no lender SVR → generic wording, no fabricated number
+  const bare = ntf.plannedNotifications([baseMortgage], TODAY, null).find((n) => n.kind === 'deal-end');
+  assert.ok(!/£/.test(bare.body));
+});
+
+console.log('widgetData — payload builder');
+test('payload carries countdown + benchmark for the soonest-ending mortgage', () => {
+  const later = { ...baseMortgage, id: 'm2', lender: 'HSBC', dealEndDate: '2028-01-01' };
+  const p = wd.widgetPayload([later, baseMortgage], TODAY, SNAPSHOT);
+  assert.strictEqual(p.lender, 'Halifax'); // ends 2027-03-31, before m2
+  assert.strictEqual(p.dealEndDate, '2027-03-31');
+  assert.strictEqual(p.yourRatePct, 6);
+  assert.strictEqual(p.benchmarkPct, 4.1); // 2yr fix, 75% band (LTV unknown)
+  assert.strictEqual(p.benchmarkAsOf, 'May 2026');
+});
+test('no market data → rate-only payload; no mortgages → null', () => {
+  const p = wd.widgetPayload([baseMortgage], TODAY, null);
+  assert.strictEqual(p.benchmarkPct, null);
+  assert.strictEqual(p.benchmarkAsOf, null);
+  assert.strictEqual(p.yourRatePct, 6);
+  assert.strictEqual(wd.widgetPayload([], TODAY, SNAPSHOT), null);
 });
 
 console.log(`\n${passed} tests passed`);
