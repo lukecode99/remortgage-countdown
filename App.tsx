@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import DashboardScreen from './src/screens/DashboardScreen';
 import OverpayScreen from './src/screens/OverpayScreen';
+import SwitchScreen from './src/screens/SwitchScreen';
 import WizardScreen from './src/screens/WizardScreen';
 import { fetchMarket } from './src/api';
 import { todayIso } from './src/format';
@@ -15,7 +16,8 @@ import { MortgageDraft } from './src/wizard';
 type View =
   | { name: 'dashboard' }
   | { name: 'wizard'; editing: Mortgage | null }
-  | { name: 'overpay'; mortgageId: string };
+  | { name: 'overpay'; mortgageId: string }
+  | { name: 'switch'; mortgageId: string };
 
 export default function App() {
   const [mortgages, setMortgages] = useState<Mortgage[]>([]);
@@ -65,6 +67,7 @@ export default function App() {
             onAdd={() => setView({ name: 'wizard', editing: null })}
             onEdit={(m) => setView({ name: 'wizard', editing: m })}
             onOverpay={(m) => setView({ name: 'overpay', mortgageId: m.id })}
+            onSwitch={(m) => setView({ name: 'switch', mortgageId: m.id })}
             onDelete={handleDelete}
           />
         )}
@@ -81,6 +84,16 @@ export default function App() {
               onUpdate={handleUpdate}
               onBack={() => setView({ name: 'dashboard' })}
             />
+          );
+        })()}
+        {loaded && view.name === 'switch' && (() => {
+          const m = mortgages.find((x) => x.id === view.mortgageId);
+          if (!m) {
+            setView({ name: 'dashboard' });
+            return null;
+          }
+          return (
+            <SwitchScreen m={m} market={market} todayIso={today} onBack={() => setView({ name: 'dashboard' })} />
           );
         })()}
         {loaded && view.name === 'wizard' && (

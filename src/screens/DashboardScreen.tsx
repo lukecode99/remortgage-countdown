@@ -23,6 +23,7 @@ interface Props {
   onAdd: () => void;
   onEdit: (m: Mortgage) => void;
   onOverpay: (m: Mortgage) => void;
+  onSwitch: (m: Mortgage) => void;
   onDelete: (m: Mortgage) => void;
 }
 
@@ -44,7 +45,7 @@ function ltvColor(pct: number): string {
   return colors.bad;
 }
 
-function MortgageCard({ m, todayIso, market, onEdit, onOverpay, onDelete }: { m: Mortgage; todayIso: string; market: MarketSnapshot | null; onEdit: Props['onEdit']; onOverpay: Props['onOverpay']; onDelete: Props['onDelete'] }) {
+function MortgageCard({ m, todayIso, market, onEdit, onOverpay, onSwitch, onDelete }: { m: Mortgage; todayIso: string; market: MarketSnapshot | null; onEdit: Props['onEdit']; onOverpay: Props['onOverpay']; onSwitch: Props['onSwitch']; onDelete: Props['onDelete'] }) {
   const cd = countdown(todayIso, m.dealEndDate);
   const balance = effectiveBalance(m, todayIso);
   const ltv = ltvPct(balance, m.propertyValue);
@@ -100,6 +101,9 @@ function MortgageCard({ m, todayIso, market, onEdit, onOverpay, onDelete }: { m:
         <Pressable style={styles.cardBtn} onPress={() => onOverpay(m)} accessibilityRole="button">
           <Text style={[styles.cardBtnText, { color: colors.accent }]}>Overpay</Text>
         </Pressable>
+        <Pressable style={styles.cardBtn} onPress={() => onSwitch(m)} accessibilityRole="button">
+          <Text style={[styles.cardBtnText, { color: colors.accent }]}>Switch?</Text>
+        </Pressable>
         <Pressable style={styles.cardBtn} onPress={() => confirmDelete(m, onDelete)} accessibilityRole="button">
           <Text style={[styles.cardBtnText, { color: colors.bad }]}>Delete</Text>
         </Pressable>
@@ -108,7 +112,7 @@ function MortgageCard({ m, todayIso, market, onEdit, onOverpay, onDelete }: { m:
   );
 }
 
-export default function DashboardScreen({ mortgages, todayIso, market, onAdd, onEdit, onOverpay, onDelete }: Props) {
+export default function DashboardScreen({ mortgages, todayIso, market, onAdd, onEdit, onOverpay, onSwitch, onDelete }: Props) {
   const sorted = [...mortgages].sort((a, b) => a.dealEndDate.localeCompare(b.dealEndDate));
   const atCap = mortgages.length >= MAX_MORTGAGES;
 
@@ -126,7 +130,7 @@ export default function DashboardScreen({ mortgages, todayIso, market, onAdd, on
       )}
 
       {sorted.map((m) => (
-        <MortgageCard key={m.id} m={m} todayIso={todayIso} market={market} onEdit={onEdit} onOverpay={onOverpay} onDelete={onDelete} />
+        <MortgageCard key={m.id} m={m} todayIso={todayIso} market={market} onEdit={onEdit} onOverpay={onOverpay} onSwitch={onSwitch} onDelete={onDelete} />
       ))}
 
       <Pressable

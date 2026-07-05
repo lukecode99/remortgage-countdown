@@ -15,7 +15,7 @@ import assert from 'node:assert';
 
 const outDir = mkdtempSync(join(tmpdir(), 'rm-app-test-'));
 const root = join(import.meta.dirname, '..');
-for (const mod of ['amortisation', 'format', 'wizard', 'market', 'overpay']) {
+for (const mod of ['amortisation', 'format', 'wizard', 'market', 'overpay', 'breakeven']) {
   execSync(
     `npx esbuild src/${mod}.ts --bundle --format=esm --platform=node --outfile=${join(outDir, mod + '.mjs')}`,
     { cwd: root, stdio: 'pipe' },
@@ -26,6 +26,7 @@ const fmt = await import(join(outDir, 'format.mjs'));
 const wiz = await import(join(outDir, 'wizard.mjs'));
 const mkt = await import(join(outDir, 'market.mjs'));
 const op = await import(join(outDir, 'overpay.mjs'));
+const bev = await import(join(outDir, 'breakeven.mjs'));
 
 let passed = 0;
 const test = (name, fn) => {
@@ -472,6 +473,87 @@ test('addOverpayment keeps the list date-sorted; removeOverpayment filters by id
   list = op.addOverpayment(list, { id: 'a', date: '2026-04-01', amount: 100 });
   assert.deepStrictEqual(list.map((o) => o.id), ['a', 'b']);
   assert.deepStrictEqual(op.removeOverpayment(list, 'a').map((o) => o.id), ['b']);
+});
+
+console.log('breakeven — ERC break-even worked example');
+// Hand-computed: £100k at 6% pays £644.30/mo over 300 months; at 4.1% the
+// payment is £533.37, saving £110.93/mo. ERC 2% (£2,000) + fees £1,549 =
+// £3,549 up front; 3,549 / 110.93 = 31.99 → breaks even in month 32.
+test('£3,549 up front at £110.93/mo saving breaks even in 32 months', () => {
+  const be = bev.ercBreakEven(100000, 644.3, 300, 'repayment', 4.1, 2000, 1549);
+  near(be.newPayment, 533.37, 0.05);
+  near(be.monthlySaving, 110.93, 0.05);
+  assert.strictEqual(be.upfrontCost, 3549);
+  assert.strictEqual(be.months, 32);
+});
+test('worth-it date attaches: 5 Jul 2026 + 32 months = 5 Mar 2029', () => {
+  const m = { ...baseMortgage, ercSchedulePct: [5, 4, 3, 2, 1], dealEndDate: '2027-07-05' };
+  const be = bev.ercBreakEvenFrom(m, TODAY, 4.1, 2000, 1549);
+  assert.strictEqual(be.months, 32);
+  assert.strictEqual(be.worthItAfter, '2029-03-05');
+});
+test('no saving at a higher rate → never breaks even', () => {
+  const be = bev.ercBreakEven(100000, 644.3, 300, 'repayment', 7, 2000, 1549);
+  assert.strictEqual(be.months, null);
+  assert.strictEqual(be.worthItAfter, null);
+  assert.ok(be.monthlySaving < 0);
+});
+test('nothing up front → breaks even immediately', () => {
+  assert.strictEqual(bev.ercBreakEven(100000, 644.3, 300, 'repayment', 4.1, 0, 0).months, 0);
+});
+test('ERC amount from the schedule: 2% of £100k a year+ out = £2,000; none → £0', () => {
+  const m = { ...baseMortgage, ercSchedulePct: [5, 4, 3, 2, 1], dealEndDate: '2027-07-05' };
+  near(bev.ercAmountNow(m, TODAY), 2000, 0.01);
+  assert.strictEqual(bev.ercAmountNow(baseMortgage, TODAY), 0);
+});
+test('isoAddMonths clamps the day to the target month', () => {
+  assert.strictEqual(bev.isoAddMonths('2026-07-05', 32), '2029-03-05');
+  assert.strictEqual(bev.isoAddMonths('2026-01-31', 1), '2026-02-28');
+  assert.strictEqual(bev.isoAddMonths('2026-11-30', 3), '2027-02-28');
+});
+
+console.log('breakeven — PT vs remortgage');
+// Hand-computed on interest-only £100k over 5 years (interest is exact):
+//   remortgage at 4.1%: £20,500 interest + £1,549 fees + £2,000 ERC = £24,049
+//   transfer  at 4.6%: £23,000 interest + £0 fee, ERC £2,000 unless waived
+// ERC applies to both → remortgage wins by £951. ERC-free window for the
+// transfer → PT £23,000 vs £24,049 → PT wins by £1,049. The toggle flips it.
+const ptBase = {
+  balanceToday: 100000, termMonths: 300, repaymentType: 'interest-only',
+  ptRatePct: 4.6, ptFee: 0, remoRatePct: 4.1, remoFees: 1549,
+  ercAmount: 2000, ptErcFree: false,
+};
+test('without the ERC-free window the remortgage is cheaper by £951', () => {
+  const r = bev.ptVsRemortgage(ptBase);
+  assert.strictEqual(r.horizonMonths, 60);
+  near(r.pt.interest, 23000, 0.01);
+  near(r.remortgage.interest, 20500, 0.01);
+  near(r.pt.totalCost, 25000, 0.01);
+  near(r.remortgage.totalCost, 24049, 0.01);
+  assert.strictEqual(r.cheaper, 'remortgage');
+  near(r.savingOverHorizon, 951, 0.01);
+});
+test('ERC-free window flips the verdict to the product transfer (£1,049)', () => {
+  const r = bev.ptVsRemortgage({ ...ptBase, ptErcFree: true });
+  assert.strictEqual(r.pt.erc, 0);
+  assert.strictEqual(r.remortgage.erc, 2000); // full remortgage still pays it
+  near(r.pt.totalCost, 23000, 0.01);
+  assert.strictEqual(r.cheaper, 'pt');
+  near(r.savingOverHorizon, 1049, 0.01);
+});
+test('identical inputs → tie; horizon caps at the remaining term', () => {
+  const r = bev.ptVsRemortgage({ ...ptBase, ptRatePct: 4.1, ptFee: 1549, ptErcFree: false });
+  assert.strictEqual(r.cheaper, 'tie');
+  assert.strictEqual(bev.ptVsRemortgage({ ...ptBase, termMonths: 24 }).horizonMonths, 24);
+});
+test('repayment mortgages compare on interest, not outgoings', () => {
+  // A lower rate must show less interest even though its payment repays
+  // more slowly per pound; balances at the end are surfaced for the table.
+  const r = bev.ptVsRemortgage({ ...ptBase, repaymentType: 'repayment' });
+  assert.ok(r.remortgage.interest < r.pt.interest);
+  assert.ok(r.pt.interest > 0 && r.pt.interest < 60 * r.pt.monthlyPayment);
+  assert.ok(r.remortgage.balanceEnd < 100000 && r.pt.balanceEnd < 100000);
+  assert.strictEqual(r.cheaper, 'remortgage');
 });
 
 console.log(`\n${passed} tests passed`);

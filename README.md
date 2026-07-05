@@ -40,6 +40,15 @@ No accounts, no sign-up, no ads. Everything stays on the device
   against a user-entered savings rate after tax (basic/higher/ISA). Logged
   overpayments persist and reduce the dashboard balance projection
   (compounded at the mortgage rate from the date they were made).
+- **Switching costs** — two comparators nobody else ships in-app: (1) ERC
+  break-even — the ERC in force (from the setup schedule) plus editable
+  remortgage fees against the monthly saving at a target rate (pre-filled
+  from the BoE benchmark, ±0.1% steppers) → "breaks even in N months —
+  worth it if you'll stay past MMM YYYY"; (2) product transfer vs full
+  remortgage — side-by-side 5-year cost table (fees + ERC + interest
+  accrued), with a toggle for the ERC-free transfer window lenders often
+  offer in the final 3–6 months. Every assumption is a visible, editable
+  input and the output is a factual cost table, never a recommendation.
 
 ## Engine
 
