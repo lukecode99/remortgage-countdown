@@ -29,7 +29,7 @@ export default function WizardScreen({ editing, todayIso, onSave, onCancel }: Pr
   const stepFields: (keyof WizardForm)[][] = [
     ['lender', 'balance', 'ratePct', 'monthlyPayment'],
     ['dealEndDay', 'dealEndMonth', 'dealEndYear', 'termYears', 'termMonths'],
-    ['propertyValue', 'erc'],
+    ['propertyValue', 'erc', 'lenderSvr'],
   ];
 
   const next = () => {
@@ -180,6 +180,15 @@ export default function WizardScreen({ editing, todayIso, onSave, onCancel }: Pr
               placeholder="e.g. 5, 4, 3, 2, 1"
               error={errors.erc}
               hint="One percentage per deal year, first year first."
+            />
+            <Field
+              label="Your lender's SVR (% a year) — optional"
+              value={form.lenderSvr}
+              onChange={set('lenderSvr')}
+              placeholder="e.g. 7.99"
+              keyboardType="decimal-pad"
+              error={errors.lenderSvr}
+              hint="The rate your deal reverts to. Left blank, we use the Bank of England average."
             />
           </View>
         )}

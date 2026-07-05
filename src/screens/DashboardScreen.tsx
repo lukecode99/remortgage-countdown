@@ -10,12 +10,15 @@ import {
   formatPoundsPence,
   formatTerm,
 } from '../format';
+import MarketCompare from '../components/MarketCompare';
+import { MarketSnapshot } from '../market';
 import { colors, radii } from '../theme';
 import { MAX_MORTGAGES, Mortgage } from '../types';
 
 interface Props {
   mortgages: Mortgage[];
   todayIso: string;
+  market: MarketSnapshot | null;
   onAdd: () => void;
   onEdit: (m: Mortgage) => void;
   onDelete: (m: Mortgage) => void;
@@ -39,7 +42,7 @@ function ltvColor(pct: number): string {
   return colors.bad;
 }
 
-function MortgageCard({ m, todayIso, onEdit, onDelete }: { m: Mortgage; todayIso: string; onEdit: Props['onEdit']; onDelete: Props['onDelete'] }) {
+function MortgageCard({ m, todayIso, market, onEdit, onDelete }: { m: Mortgage; todayIso: string; market: MarketSnapshot | null; onEdit: Props['onEdit']; onDelete: Props['onDelete'] }) {
   const cd = countdown(todayIso, m.dealEndDate);
   const balance = currentBalance(m, todayIso);
   const ltv = ltvPct(balance, m.propertyValue);
@@ -86,6 +89,8 @@ function MortgageCard({ m, todayIso, onEdit, onDelete }: { m: Mortgage; todayIso
         {m.paymentDerived ? ' · payment estimated' : ''}
       </Text>
 
+      <MarketCompare m={m} snapshot={market} todayIso={todayIso} />
+
       <View style={styles.cardButtons}>
         <Pressable style={styles.cardBtn} onPress={() => onEdit(m)} accessibilityRole="button">
           <Text style={styles.cardBtnText}>Edit</Text>
@@ -98,7 +103,7 @@ function MortgageCard({ m, todayIso, onEdit, onDelete }: { m: Mortgage; todayIso
   );
 }
 
-export default function DashboardScreen({ mortgages, todayIso, onAdd, onEdit, onDelete }: Props) {
+export default function DashboardScreen({ mortgages, todayIso, market, onAdd, onEdit, onDelete }: Props) {
   const sorted = [...mortgages].sort((a, b) => a.dealEndDate.localeCompare(b.dealEndDate));
   const atCap = mortgages.length >= MAX_MORTGAGES;
 
@@ -116,7 +121,7 @@ export default function DashboardScreen({ mortgages, todayIso, onAdd, onEdit, on
       )}
 
       {sorted.map((m) => (
-        <MortgageCard key={m.id} m={m} todayIso={todayIso} onEdit={onEdit} onDelete={onDelete} />
+        <MortgageCard key={m.id} m={m} todayIso={todayIso} market={market} onEdit={onEdit} onDelete={onDelete} />
       ))}
 
       <Pressable

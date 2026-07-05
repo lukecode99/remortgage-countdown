@@ -18,6 +18,17 @@ No accounts, no sign-up, no ads. Everything stays on the device
   projected to today, LTV badge, rate, remaining term and the ERC percentage
   currently in force.
 - **Edit / delete** — from each card; state survives restarts.
+- **Market comparison** — your rate against the matching Bank of England
+  average quoted rate (from the companion
+  [uk-mortgage-rates](https://github.com/lukecode99/uk-mortgage-rates)
+  worker): the LTV maps to the smallest published band that covers it
+  (72% → the 75% band; 3/5/10-year fixes are only published at 75%), the
+  saving is the payment recomputed at the benchmark on today's balance, and
+  the maths expands on tap. Inside the final 3 months the card also shows the
+  cost of lapsing onto the revert rate (BoE average, or your lender's SVR if
+  entered). Everything is labelled as a BoE average with its month — averages
+  of advertised rates, never a quote or a recommendation — and data more than
+  2 months old is flagged stale.
 
 ## Engine
 

@@ -15,7 +15,7 @@ import assert from 'node:assert';
 
 const outDir = mkdtempSync(join(tmpdir(), 'rm-app-test-'));
 const root = join(import.meta.dirname, '..');
-for (const mod of ['amortisation', 'format', 'wizard']) {
+for (const mod of ['amortisation', 'format', 'wizard', 'market']) {
   execSync(
     `npx esbuild src/${mod}.ts --bundle --format=esm --platform=node --outfile=${join(outDir, mod + '.mjs')}`,
     { cwd: root, stdio: 'pipe' },
@@ -24,6 +24,7 @@ for (const mod of ['amortisation', 'format', 'wizard']) {
 const am = await import(join(outDir, 'amortisation.mjs'));
 const fmt = await import(join(outDir, 'format.mjs'));
 const wiz = await import(join(outDir, 'wizard.mjs'));
+const mkt = await import(join(outDir, 'market.mjs'));
 
 let passed = 0;
 const test = (name, fn) => {
@@ -210,12 +211,144 @@ test('interest-only derivation via the wizard', () => {
   near(r.draft.monthlyPayment, am.monthlyInterest(185000, 4.92), 0.01);
 });
 test('round-trip: formFromMortgage reproduces the draft', () => {
-  const r = wiz.validateWizard({ ...goodForm(), erc: '3, 2', propertyValue: '310000' }, TODAY);
+  const r = wiz.validateWizard({ ...goodForm(), erc: '3, 2', propertyValue: '310000', lenderSvr: '7.99' }, TODAY);
   const m = { ...r.draft, id: 'x', balanceAsOf: TODAY, createdAt: 't', updatedAt: 't' };
   const f = wiz.formFromMortgage(m);
   const r2 = wiz.validateWizard(f, TODAY);
   assert.ok(r2.ok);
   assert.deepStrictEqual(r2.draft, r.draft);
+});
+test('lender SVR optional but validated when present', () => {
+  const good = wiz.validateWizard({ ...goodForm(), lenderSvr: '7.99' }, TODAY);
+  assert.strictEqual(good.draft.lenderSvrPct, 7.99);
+  const blank = wiz.validateWizard(goodForm(), TODAY);
+  assert.strictEqual(blank.draft.lenderSvrPct, undefined);
+  const bad = wiz.validateWizard({ ...goodForm(), lenderSvr: '45' }, TODAY);
+  assert.ok(!bad.ok && bad.errors.lenderSvr);
+});
+
+console.log('market — LTV band mapping');
+test('smallest published band that covers the LTV, edges inclusive', () => {
+  assert.strictEqual(mkt.bandForLtv(50).band, 60);
+  assert.strictEqual(mkt.bandForLtv(60).band, 60);
+  assert.strictEqual(mkt.bandForLtv(60.01).band, 75);
+  assert.strictEqual(mkt.bandForLtv(72).band, 75); // the card's example
+  assert.strictEqual(mkt.bandForLtv(75).band, 75);
+  assert.strictEqual(mkt.bandForLtv(75.1).band, 85);
+  assert.strictEqual(mkt.bandForLtv(90).band, 90);
+  assert.strictEqual(mkt.bandForLtv(95).band, 95);
+});
+test('above 95% clamps to 95 with a note; unknown LTV defaults to 75 with a note', () => {
+  const high = mkt.bandForLtv(97);
+  assert.strictEqual(high.band, 95);
+  assert.ok(high.note);
+  const unknown = mkt.bandForLtv(null);
+  assert.strictEqual(unknown.band, 75);
+  assert.ok(unknown.note);
+});
+test('series selection: 2yr fixes span the bands, longer fixes force 75%', () => {
+  assert.strictEqual(mkt.seriesFor(2, 60).code, 'IUMZICQ');
+  assert.strictEqual(mkt.seriesFor(2, 75).code, 'IUMBV34');
+  assert.strictEqual(mkt.seriesFor(2, 85).code, 'IUMZICR');
+  assert.strictEqual(mkt.seriesFor(2, 90).code, 'IUMB482');
+  assert.strictEqual(mkt.seriesFor(2, 95).code, 'IUM2WTL');
+  assert.strictEqual(mkt.seriesFor(3, 75).code, 'IUMBV37');
+  assert.strictEqual(mkt.seriesFor(5, 75).code, 'IUMBV42');
+  assert.strictEqual(mkt.seriesFor(10, 75).code, 'IUMBV45');
+  const forced = mkt.seriesFor(5, 90);
+  assert.strictEqual(forced.code, 'IUMBV42');
+  assert.strictEqual(forced.band, 75);
+  assert.ok(forced.bandNote);
+  assert.strictEqual(mkt.seriesFor(3, 75).bandNote, null);
+});
+
+console.log('market — staleness & provenance');
+test('data ≤2 months old is fresh, >2 months is stale', () => {
+  assert.strictEqual(mkt.monthsOld('2026-05-31', '2026-07-05'), 2);
+  assert.strictEqual(mkt.isStale('2026-05-31', '2026-07-05'), false);
+  assert.strictEqual(mkt.monthsOld('2026-04-30', '2026-07-05'), 3);
+  assert.strictEqual(mkt.isStale('2026-04-30', '2026-07-05'), true);
+});
+test('month label for provenance', () => {
+  assert.strictEqual(mkt.monthLabel('2026-05-31'), 'May 2026');
+});
+
+console.log('market — savings worked example');
+// Hand-computed: £100,000 at 6% over 300 months pays £644.30/mo. At a 4.1%
+// benchmark on the same balance/term the annuity is £341.6667/0.640577 =
+// £533.37/mo, so switching saves £110.93/mo.
+const SNAPSHOT = {
+  fetchedAt: '2026-07-05T08:00:00Z',
+  asOf: '2026-05-31',
+  rates: [
+    { code: 'IUMBV34', label: '2yr fixed, 75% LTV', cadence: 'monthly', value: 4.1, date: '2026-05-31' },
+    { code: 'IUMZICQ', label: '2yr fixed, 60% LTV', cadence: 'monthly', value: 3.9, date: '2026-05-31' },
+    { code: 'IUMBV42', label: '5yr fixed, 75% LTV', cadence: 'monthly', value: 4.3, date: '2026-05-31' },
+    { code: 'IUMTLMV', label: 'Revert-to-rate (ex-SVR)', cadence: 'monthly', value: 6.6, date: '2026-05-31' },
+  ],
+};
+const baseMortgage = {
+  id: 'm1', lender: 'Halifax', balance: 100000, balanceAsOf: TODAY, ratePct: 6,
+  monthlyPayment: 644.3, paymentDerived: true, dealEndDate: '2027-03-31',
+  remainingTermMonths: 300, repaymentType: 'repayment',
+  createdAt: 't', updatedAt: 't',
+};
+test('your 6% vs a 4.1% benchmark saves £110.93/mo on £100k over 300 months', () => {
+  const c = mkt.compareToMarket(baseMortgage, SNAPSHOT, TODAY, 2);
+  assert.strictEqual(c.code, 'IUMBV34'); // unknown LTV → 75% band
+  assert.ok(c.bandNote); // and says so
+  assert.strictEqual(c.benchmarkPct, 4.1);
+  assert.strictEqual(c.asOfMonth, 'May 2026');
+  assert.strictEqual(c.stale, false);
+  near(c.newPayment, 533.37, 0.05);
+  near(c.savingMonthly, 110.93, 0.05);
+});
+test('known LTV picks its band series (50% LTV → 60% band)', () => {
+  const c = mkt.compareToMarket({ ...baseMortgage, propertyValue: 200000 }, SNAPSHOT, TODAY, 2);
+  assert.strictEqual(c.code, 'IUMZICQ');
+  assert.strictEqual(c.band, 60);
+  assert.strictEqual(c.bandNote, null);
+});
+test('balance and term roll forward from balanceAsOf', () => {
+  const c = mkt.compareToMarket({ ...baseMortgage, balanceAsOf: '2026-01-05' }, SNAPSHOT, TODAY, 2);
+  assert.strictEqual(c.termMonths, 294); // 6 months elapsed
+  assert.ok(c.balanceToday < 100000 && c.balanceToday > 98000);
+});
+test('missing series → null (no made-up numbers)', () => {
+  const c = mkt.compareToMarket(baseMortgage, { ...SNAPSHOT, rates: [] }, TODAY, 2);
+  assert.strictEqual(c, null);
+});
+
+console.log('market — SVR drift window');
+test('hidden at exactly 3 whole months out, shown a day inside', () => {
+  const m = { ...baseMortgage, dealEndDate: '2026-10-05' };
+  assert.strictEqual(mkt.svrDrift(m, SNAPSHOT, '2026-07-05'), null); // exactly 3 months
+  assert.ok(mkt.svrDrift(m, SNAPSHOT, '2026-07-06')); // 2 whole months left
+});
+test('hidden once the deal has ended', () => {
+  const m = { ...baseMortgage, dealEndDate: '2026-10-05' };
+  assert.strictEqual(mkt.svrDrift(m, SNAPSHOT, '2026-10-05'), null);
+  assert.strictEqual(mkt.svrDrift(m, SNAPSHOT, '2026-11-01'), null);
+});
+test('uses the BoE revert-to-rate by default, with provenance', () => {
+  const m = { ...baseMortgage, dealEndDate: '2026-08-20' };
+  const d = mkt.svrDrift(m, SNAPSHOT, '2026-07-05');
+  assert.strictEqual(d.revertPct, 6.6);
+  assert.strictEqual(d.usingLenderSvr, false);
+  assert.strictEqual(d.asOfMonth, 'May 2026');
+});
+test('prefers the user-entered lender SVR', () => {
+  const m = {
+    ...baseMortgage, dealEndDate: '2026-08-20', lenderSvrPct: 7.99,
+    repaymentType: 'interest-only', ratePct: 3, monthlyPayment: 250,
+  };
+  const d = mkt.svrDrift(m, SNAPSHOT, '2026-07-05');
+  assert.strictEqual(d.revertPct, 7.99);
+  assert.ok(d.usingLenderSvr);
+  assert.strictEqual(d.asOfMonth, null);
+  // Interest-only keeps the balance at £100k: 100000 × 7.99%/12 = £665.83/mo.
+  near(d.paymentOnRevert, 665.83, 0.01);
+  near(d.extraMonthly, 415.83, 0.01);
 });
 
 console.log(`\n${passed} tests passed`);

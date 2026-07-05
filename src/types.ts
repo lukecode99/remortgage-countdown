@@ -22,6 +22,9 @@ export interface Mortgage {
   propertyValue?: number;
   /** Optional early-repayment charge, percent per deal year (year 1 first). */
   ercSchedulePct?: number[];
+  /** Optional: the lender's SVR/revert rate, percent. Used for the SVR-drift
+   * warning instead of the BoE average revert-to-rate when entered. */
+  lenderSvrPct?: number;
   createdAt: string;
   updatedAt: string;
 }

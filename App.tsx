@@ -3,7 +3,9 @@ import { StatusBar } from 'expo-status-bar';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import DashboardScreen from './src/screens/DashboardScreen';
 import WizardScreen from './src/screens/WizardScreen';
+import { fetchMarket } from './src/api';
 import { todayIso } from './src/format';
+import { MarketSnapshot } from './src/market';
 import { deleteMortgage, loadMortgages, newId, saveMortgage } from './src/storage';
 import { colors } from './src/theme';
 import { Mortgage } from './src/types';
@@ -13,6 +15,7 @@ type View = { name: 'dashboard' } | { name: 'wizard'; editing: Mortgage | null }
 
 export default function App() {
   const [mortgages, setMortgages] = useState<Mortgage[]>([]);
+  const [market, setMarket] = useState<MarketSnapshot | null>(null);
   const [view, setView] = useState<View>({ name: 'dashboard' });
   const [loaded, setLoaded] = useState(false);
   const today = todayIso();
@@ -23,6 +26,7 @@ export default function App() {
       setLoaded(true);
       if (list.length === 0) setView({ name: 'wizard', editing: null });
     });
+    fetchMarket().then(setMarket); // comparison block renders when this lands
   }, []);
 
   const handleSave = async (draft: MortgageDraft) => {
@@ -47,6 +51,7 @@ export default function App() {
           <DashboardScreen
             mortgages={mortgages}
             todayIso={today}
+            market={market}
             onAdd={() => setView({ name: 'wizard', editing: null })}
             onEdit={(m) => setView({ name: 'wizard', editing: m })}
             onDelete={handleDelete}

@@ -17,6 +17,7 @@ export interface WizardForm {
   repaymentType: RepaymentType;
   propertyValue: string; // optional
   erc: string; // optional, e.g. "5, 4, 3, 2, 1"
+  lenderSvr: string; // optional, the lender's SVR/revert %
 }
 
 export const emptyForm = (): WizardForm => ({
@@ -32,6 +33,7 @@ export const emptyForm = (): WizardForm => ({
   repaymentType: 'repayment',
   propertyValue: '',
   erc: '',
+  lenderSvr: '',
 });
 
 export function formFromMortgage(m: Mortgage): WizardForm {
@@ -49,6 +51,7 @@ export function formFromMortgage(m: Mortgage): WizardForm {
     repaymentType: m.repaymentType,
     propertyValue: m.propertyValue ? String(m.propertyValue) : '',
     erc: (m.ercSchedulePct ?? []).join(', '),
+    lenderSvr: m.lenderSvrPct !== undefined ? String(m.lenderSvrPct) : '',
   };
 }
 
@@ -116,6 +119,13 @@ export function validateWizard(f: WizardForm, todayIso: string): WizardResult {
     else propertyValue = pv;
   }
 
+  let lenderSvrPct: number | undefined;
+  if (f.lenderSvr.trim() !== '') {
+    const sv = num(f.lenderSvr);
+    if (sv === null || sv <= 0 || sv > 20) errors.lenderSvr = 'SVR should be the annual %, e.g. 7.99 (or leave blank)';
+    else lenderSvrPct = sv;
+  }
+
   let ercSchedulePct: number[] | undefined;
   if (f.erc.trim() !== '') {
     const parts = f.erc.split(/[,;]/).map((p) => num(p));
@@ -161,6 +171,7 @@ export function validateWizard(f: WizardForm, todayIso: string): WizardResult {
       repaymentType: f.repaymentType,
       propertyValue,
       ercSchedulePct,
+      lenderSvrPct,
     },
   };
 }
