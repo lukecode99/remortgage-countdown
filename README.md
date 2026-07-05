@@ -81,6 +81,16 @@ LTV, calendar countdown maths and ERC schedule lookup. It is unit-tested
 against hand-verified worked examples, e.g. £100,000 at 6% over 300 months →
 £644.30/month; £200,000 at 5% paying £1,169.18 → ~£195,876 after 12 months.
 
+## Ship
+
+- **iOS / TestFlight** — `.github/workflows/ios.yml` (dispatch-only): expo
+  prebuild, strip the unused push entitlement (expo-notifications injects
+  `aps-environment` but the app only schedules local notifications), manual
+  signing patched per target (app + widget need different provisioning
+  profiles), build number = run number, upload via App Store Connect API key.
+- **Web demo** — `.github/workflows/web.yml` (dispatch-only) exports the web
+  build to gh-pages: https://lukecode99.github.io/remortgage-countdown/
+
 ## Development
 
 ```bash
