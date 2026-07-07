@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import Field from '../components/Field';
 import Pills from '../components/Pills';
 import { formatDate, formatPounds, formatPoundsPence, formatPct } from '../format';
@@ -62,6 +63,7 @@ export default function OverpayScreen({ m, todayIso, onUpdate, onBack }: Props) 
       return;
     }
     setBreachPending(false);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     const overpayments = addOverpayment(m.overpayments, {
       id: `op_${m.overpayments?.length ?? 0}_${todayIso}`,
       date: todayIso,

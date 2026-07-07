@@ -1,5 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import { colors, radii } from '../theme';
 
 interface Props {
@@ -16,7 +17,7 @@ export default function Pills({ options, selected, onSelect }: Props) {
         return (
           <Pressable
             key={o}
-            onPress={() => onSelect(o)}
+            onPress={() => { Haptics.selectionAsync(); onSelect(o); }}
             style={[styles.pill, active ? styles.pillActive : null]}
             accessibilityRole="button"
           >

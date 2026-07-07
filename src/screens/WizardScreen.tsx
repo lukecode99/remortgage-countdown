@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import * as Haptics from 'expo-haptics';
 import Field from '../components/Field';
 import Pills from '../components/Pills';
 import { formatPoundsPence } from '../format';
@@ -52,6 +53,7 @@ export default function WizardScreen({ editing, todayIso, onSave, onCancel }: Pr
     }
     setWarning(result.warning);
     if (result.warning && !warning) return; // show the warning once; next tap confirms
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     onSave(result.draft);
   };
 
